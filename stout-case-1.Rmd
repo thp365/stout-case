@@ -1,0 +1,115 @@
+---
+title: "Stout Case Study 1"
+author: "Theresa Pham"
+date: "12/22/2022"
+output: html_document
+---
+
+```{r setup, echo=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+```
+
+***Read and look at data***
+```{r}
+loans<-read.csv("loans_full_schema.csv")
+glimpse(loans)
+```
+
+**Identifying possible issues**
+```{r}
+# Missing values
+sum(is.na(loans))
+
+# Duplicate rows
+sum(duplicated(loans))
+```
+
+**Description:** This data set is a record of 10,000 loans made to individuals through Lending Club. Each row represents a borrower, and described by 55 variables on employment, income status, credit and account history, and loan information. 
+
+**Issues:** The data only displays loans that were actually made, not loan applications, thus we do not have information pertaining to "riskier" individuals, nor do we have adequate data on loan offers with interest rates on the higher end. Overall, the data is missing 32813 values, but has no duplicate entries. 
+
+## Visualizations
+
+**Visualization 1**
+
+```{r}
+loans %>%
+  group_by(loan_purpose) %>%
+  mutate(purpose.count=n()) %>%
+  select(loan_purpose, purpose.count) %>%
+  unique() %>%
+  ggplot(aes(x=reorder(loan_purpose,(-purpose.count)), y=purpose.count, fill=loan_purpose)) +
+  geom_col() + 
+  ggtitle("Loan Purpose Distribution") +
+  labs(x="Loan Purpose", y="Frequency") +
+  theme(legend.position="none", axis.text.x=element_text(angle=90, size=6.5))
+```
+
+Observations: The largest category of loans are purposed for debt consolidation, which has more than double the number of observations than the next largest loan purpose, credit card. 
+
+
+**Visualization 2**
+
+```{r}
+loans %>%
+  ggplot(aes(x=num_satisfactory_accounts, color=grade)) +
+  geom_density() +
+  ggtitle("Satisfactory Accounts Between Loan Grades") +
+  labs(x="Number of Satisfactory Accounts", y="Density")
+```
+
+Observations: The distribution of number of satisfactory accounts for borrowers with different loan grade follows a similar pattern for all grades. Across all loan grades, the number of most common number of satisfactory accounts seems to be around 10.    
+
+**Visualization 3**
+
+```{r}
+loans %>%
+  group_by(application_type) %>%
+  ggplot(aes(x=application_type, y=loan_amount, fill=application_type)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Application Type and Loan Amount") +
+  labs(x="Application Type", y="Loan Amount") +
+  theme(legend.position="none")
+```
+
+Observations: In comparing the two boxplots, joint borrowers generally receive higher loan amounts. The median loan amount for joint borrowers is about a couple thousand more than that of individuals.
+
+**Visualization 4** 
+
+```{r}
+loans %>%
+  group_by(earliest_credit_line) %>%
+  mutate(mean.interest=mean(interest_rate)) %>%
+  ggplot((aes(x=earliest_credit_line, y=mean.interest))) +
+  geom_line(color="red") +
+  ggtitle("Credit Line and Interest Rate") +
+  labs(x="Year of Earliest Credit Line", y="Mean Interest Rate")
+```
+
+Observations: On average, having an older earliest line of credit yields a lower interest rate for loans. There is a clear positive trend between credit line year and interest rate.
+
+
+**Visualization 5**
+
+```{r}
+loans %>% 
+  group_by(sub_grade) %>% 
+  mutate(mean.cc.bal=mean(num_cc_carrying_balance)) %>% 
+  ggplot(aes(x=sub_grade, y= mean.cc.bal)) +
+  geom_point() +
+  geom_text(aes(label=sub_grade), vjust=1.5, size=2) +
+  ggtitle("Loan Grade and Number of Credit Cards") +
+  labs(x="Detailed Grade", y="Mean Number of CCs with Balance") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+Observations: There is a notable relationship between the number of credit cards carrying a balance and the loan grade of a borrower. Having more credit cards with balances correlates with a "riskier" loan, thus a lower grade.
+
+## Predicting Interest Rate
+
+
+
