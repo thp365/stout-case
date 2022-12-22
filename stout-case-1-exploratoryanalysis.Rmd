@@ -1,5 +1,5 @@
 ---
-title: "Stout Case Study 1"
+title: "Stout Case Study 1: Exploratory Analysis"
 author: "Theresa Pham"
 date: "12/22/2022"
 output: html_document
@@ -108,8 +108,3 @@ loans %>%
 ```
 
 Observations: There is a notable relationship between the number of credit cards carrying a balance and the loan grade of a borrower. Having more credit cards with balances correlates with a "riskier" loan, thus a lower grade.
-
-## Predicting Interest Rate
-
-
-

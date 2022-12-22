@@ -1,0 +1,186 @@
+---
+title: 'Stout Case Study 1: Linear Regression'
+author: "Theresa Pham"
+date: "12/22/2022"
+output: html_document
+---
+
+```{r setup, echo=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(aod) #wald test
+library(gridExtra) # par with ggplot
+library(Metrics) #rmse
+```
+
+
+```{r}
+loans<-read.csv("loans_full_schema.csv")
+glimpse(loans)
+```
+
+**The purpose of this linear regression is to predict interest rates from a feature set of numerical predictors**
+
+## Cleaning
+For cleaning purposes, we will select only columns with numeric inputs and omit any NAs. 
+
+```{r}
+n_numcols <- unlist(lapply(loans, is.numeric))  
+sum(n_numcols)  # 42 numeric columns
+
+loans_numeric <- select_if(loans, is.numeric)
+ncol(loans_numeric)   # should have 42 columns
+
+loans_numeric <- na.omit(loans_numeric)
+```
+
+
+## Building a Model
+We will create a correlation matrix to identify which variables have high linear correlations with interest rates.
+
+```{r}
+# Correlation data frame
+loans_cor <- loans_numeric %>%
+  cor() %>%
+  as.data.frame() %>%
+  rownames_to_column("var1") %>%
+    pivot_longer(-1, names_to = "var2", values_to = "correlation")
+
+# Observations most correlated with interest rate
+loans_cor %>%
+  filter(var1=="interest_rate") %>%
+  filter(correlation > 0.2) %>%
+  arrange(-correlation)
+
+top_loans_cor <- loans_cor %>%
+  filter(var1 %in% c("interest_rate", "paid_interest", "term", "inquiries_last_12m", "debt_to_income_joint")) %>%
+  filter (var2 %in% c("interest_rate", "paid_interest", "term", "inquiries_last_12m", "debt_to_income_joint"))
+```
+
+We will create a heat map to identify any confounding variables.
+```{r}
+# Correlation Heat Map with top 4 variables correlated with interest rate 
+
+top_loans_cor %>%
+    ggplot(aes(var1, var2, fill = correlation)) + 
+  geom_tile() + 
+  scale_fill_gradient2() + 
+  geom_text(aes(label = round(correlation,
+    2))) + 
+  theme(axis.text.x = element_text(angle=90))
+```
+
+The predictors, "term" and "paid interest", have a relatively high correlation, thus we well check if they cause discrepancies when running a linear regression.
+
+We will now create a linear model from these four predictors to predict interest rate.
+```{r}
+# Split data into train and test sets
+top_loans <- loans_numeric %>%
+  select(interest_rate, paid_interest, term, inquiries_last_12m, debt_to_income_joint)
+
+set.seed(1)
+sort_loans  <- sort(sample(nrow(top_loans), nrow(top_loans)*.7))
+lm_train <- top_loans[sort_loans,]
+lm_test <- top_loans[-sort_loans,]
+
+# Create linear model from training set
+
+# All 4 variables
+ir_lm1 <- lm(interest_rate ~ paid_interest + term + inquiries_last_12m + debt_to_income_joint, data=lm_train)
+summary(ir_lm1)
+
+# Exclude "term" as predictor
+ir_lm2 <- lm(interest_rate ~ paid_interest + inquiries_last_12m + debt_to_income_joint, data=lm_train)
+summary(ir_lm2)
+
+# Wald test for "term" and "paid interest"
+wald.test(Sigma = vcov(ir_lm1), b = coef(ir_lm1), Terms = 1:2)
+```
+
+The p-value for the Wald test is less than 0.05, so we reject the null hypothesis that the two coefficients are simultaneously equal to zero. Therefore, both "paid_interest" and "term" are both significant to the model's fit. 
+
+From the linear model summaries above, the p-values of each predictor are all extremely small, especially on a 0.05 significance level, thus we can conclude that each predictor is significantly different from 0 and have considerable contribution to the model. 
+
+We will proceed with the full multiple linear regression in which the four numeric variables, "paid_interest", "term", "inquiries_last_12m", and "debt_to_income_joint" are used to predict interest rate.
+
+## Evaluate Model
+```{r}
+par(mfrow=c(2,2))
+
+fit1 <- ggplot(lm_train, aes(x=term, y=interest_rate)) + 
+  geom_point() + 
+  geom_smooth(method=lm) + 
+  ggtitle("Observed vs. Fitted") +
+  labs(x="Term", y="Interest Rate")
+
+fit2 <- ggplot(lm_train, aes(x=paid_interest, y=interest_rate)) + 
+  geom_point() + 
+  geom_smooth(method=lm) +
+  ggtitle("Observed vs. Fitted") + 
+  labs(x="Paid Interest", y="Interest Rate")
+
+fit3 <- ggplot(lm_train, aes(x=inquiries_last_12m, y=interest_rate)) + 
+  geom_point() + 
+  geom_smooth(method=lm) +
+  ggtitle("Observed vs. Fitted") + 
+  labs(x="Number of Credit Inquiries", y="Interest Rate")
+
+fit4 <- ggplot(lm_train, aes(x=debt_to_income_joint, y=interest_rate)) + 
+  geom_point() + 
+  geom_smooth(method=lm) +
+  ggtitle("Observed vs. Fitted") + 
+  labs(x="Joint Debt-to-Income Ratio", y="Interest Rate")
+
+grid.arrange(fit1, fit2, fit3, fit4, nrow = 2)
+```
+
+The first assumption of the linear model is that all predictors have a relatively linear relationship with interest rate.
+
+We will plot the residuals, a normal QQ plot, and the distribution of residuals to check more assumptions of a linear regression.
+```{r}
+par(mfrow=c(2,2))
+
+plot(ir_lm1, which = c(1,2))
+
+ir.res <- resid(ir_lm1)
+hist(ir.res, 
+     main = "Histogram of Residuals",
+     col = "sky blue")
+plot(density(ir.res), 
+     main = "Density Plot of Residuals", 
+     col = "sky blue")
+```
+From the plots, the residuals are normally distributed with a 0 mean and equal variance, uniform spread, and appear independent, thus meeting all assumptions of a linear model. This model seems to be a good fit on the training set. 
+
+We will now evaluate the model with the test set by evaluating the plot and RMSE of actual vresus predicted interest rates.
+
+```{r}
+# Data frame of actual and predicted interest rates on test set
+ir_lm1_pred <- as.data.frame(predict(ir_lm1, newdata=lm_test))
+#lm_test
+#ir_lm1_pred
+
+lm_test_df <- data.frame(lm_test$interest_rate, ir_lm1_pred)
+colnames(lm_test_df)[1] <- "Actual"
+colnames(lm_test_df)[2] <- "Predicted"
+head(lm_test_df)
+```
+
+```{r}
+# Actual vs Predicted
+plot(lm_test_df$Actual, lm_test_df$Predicted, 
+     xlab = "Actual Interest Rate", 
+     ylab = "Predicted Interest Rate")
+
+# RMSE
+lm_rmse <- rmse(lm_test_df$Actual, lm_test_df$Predicted)
+lm_rmse
+```
+On average, the predicted value will be off by 4.472 from the actual value.
+
+## Proposed Enhancements
+If given more time, some enhancements I would add to the model would be to consider non-numerical variables as well, because many of the columns in the data set were non numerical. Another enhancement would be to consider possible interactions between variables to enhance the model, or perhaps transform the model so that it is more linear. 
+
