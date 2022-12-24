@@ -1,0 +1,27 @@
+---
+title: "Stout Case Study 2: Data Manipulation and Visualization"
+author: "Theresa Pham"
+date: "12/24/2022"
+output: html_document
+---
+
+```{r setup, echo=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+***Read and look at data***
+```{r}
+orders <- read.csv("casestudy.csv")
+glimpse(orders)
+```
+
+## Data Manipulation
+
+
+
+
+***Data frame of all outputs for each year***
+
+## Visualizations
