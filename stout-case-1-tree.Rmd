@@ -1,0 +1,101 @@
+---
+title: 'Stout Case Study 1: Decision Tree Regression'
+author: "Theresa Pham"
+date: "12/22/2022"
+output: html_document
+---
+
+```{r setup, echo=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(mlbench)
+library(rpart) #decision tree regression
+library(Metrics) #rmse
+```
+
+```{r}
+loans<-read.csv("loans_full_schema.csv")
+glimpse(loans)
+```
+
+**The purpose of this decision tree regression is to predict interest rates from a feature set of predictors**
+
+## Cleaning
+For cleaning purposes, we will omit NAs and consider only columns with 2 or more unique inputs.
+```{r}
+clean_loans <- na.omit(loans)
+
+# number of unique observations for each variable
+n_unique <- sapply(lapply(clean_loans, unique), length)
+
+clean_loans <- clean_loans %>%
+  select(-which(n_unique==1))
+
+sapply(lapply(clean_loans, unique), length) # no more 1s
+```
+
+# Building the model
+We will rank the variables by importance in predicting interest rate to define the feature set.
+```{r, warning=FALSE}
+set.seed(3)
+
+loans_ctrl <- trainControl(method="repeatedcv", number=10, repeats=3)
+
+loans_mod <- train(interest_rate ~ ., data=clean_loans, preProcess="scale", trControl=loans_ctrl)
+
+loans_importance <- varImp(loans_mod, scale=FALSE)
+
+print(loans_importance)
+```
+
+From the importance data frame, we will use grade and subgrade as the feature set and fit a decision tree regression model using these features. Note that decision trees make the assumption that predictors are discrete, so we excluded the continuous variables that we printed as important above.
+
+```{r}
+# Split data into train and test sets
+set.seed(9)
+sort_loans  <- sort(sample(nrow(clean_loans), nrow(clean_loans)*.7))
+tree_train <- clean_loans[sort_loans,]
+tree_test <- clean_loans[-sort_loans,]
+
+# Decision tree regression with feature training set
+loans_treefit <- rpart(interest_rate ~ grade + sub_grade, method = "anova", data = tree_train)
+
+plot(loans_treefit, uniform = TRUE,
+          main = "Interest Rate Decision Tree Regression")
+text(loans_treefit, use.n = TRUE, cex = .7)
+
+print(loans_treefit)
+```
+
+## Evaluate Model
+```{r}
+# Remove additional levels from test set
+tree_test <- tree_test %>% 
+  filter(sub_grade != "A1") 
+
+# Data frame of actual and predicted interest rates on test set
+tree_pred <- as.data.frame(predict(loans_treefit, newdata=tree_test, method="anova"))
+
+tree_test_df <- data.frame(tree_test$interest_rate, tree_pred)
+colnames(tree_test_df)[1] <- "Actual"
+colnames(tree_test_df)[2] <- "Predicted"
+head(tree_test_df)
+```
+```{r}
+# Actual vs Predicted
+plot(tree_test_df$Actual, tree_test_df$Predicted, 
+     xlab = "Actual Interest Rate", 
+     ylab = "Predicted Interest Rate")
+
+# RMSE
+tree_rmse <- rmse(tree_test_df$Actual, tree_test_df$Predicted)
+tree_rmse
+```
+On average, the predicted value will be off by 1.022 from the actual value. This RMSE is much smaller than that of the linear regression model we created, thus this decision tree regression is more accurate in predicting interest rate.
+
+## Proposed Enhancements
+Given more time, I would have visualized how the number of splits in the decision tree affect the model's error to adjust the number of splits for an optimal prediction model. I could also convert continuous variables into discrete variables to add them to the feature set and create a more accurate model. 
