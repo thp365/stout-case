@@ -11,17 +11,151 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
+
 ***Read and look at data***
 ```{r}
 orders <- read.csv("casestudy.csv")
 glimpse(orders)
+head(orders)
 ```
 
+
 ## Data Manipulation
+We will extract and calculate information for each year, so we will find how many years there are in the data set. 
+```{r}
+table(orders$year)
+```
 
 
+For each prompt, we should obtain results for each year applicable. 
+
+**Total revenue for the current year**
+```{r}
+Total_Rev <- orders %>%
+  group_by(year) %>%
+  summarise(total_rev = sum(net_revenue))
+Total_Rev
+```
 
 
-***Data frame of all outputs for each year***
+**New Customer Revenue** (new customers not present in previous year only)
+```{r}
+custs2015 <- orders %>%
+  filter(year == 2015) 
+custs2016 <- orders %>%
+  filter(year == 2016)
+custs2017 <- orders %>%
+  filter(year == 2017)
+
+# all customers in 2015 are "new" for 2015
+new2015 <- custs2015
+
+# new customers in 2016
+new2016 <- anti_join(custs2016, custs2015, by="customer_email")
+
+# new customers in 2017
+new2017 <- anti_join(custs2017, custs2016, by="customer_email")
+
+# create new new data frame with new customers only
+new_orders <- bind_rows(new2015, new2016, new2017)
+
+New_Cust_Rev <- new_orders %>%
+  group_by(year) %>%
+  summarise(new_cust_rev = sum(net_revenue))
+New_Cust_Rev
+```
+
+Note that we do not have data on years before 2015, thus we cannot accurately determine whether customers are new in 2015.
+
+**Existing Customer Growth** (Revenue of existing customers for current year minus Revenue of existing customers from the previous year)
+```{r}
+# existing customers = all current customers - new customers
+
+existing_rev <- Total_Rev %>%
+  left_join(New_Cust_Rev, by="year") %>%
+  mutate(existing_rev = total_rev - new_cust_rev) %>%
+  mutate(prev_existing_rev = lag(existing_rev))
+existing_rev
+
+Existing_Cust_Growth <- existing_rev %>%
+  mutate(existing_cust_growth = existing_rev - prev_existing_rev) %>%
+  select(year, existing_cust_growth)
+Existing_Cust_Growth
+```
+Note that revenues may be off again due to missing data from year before 2015. We assumed all 2015 customers to be "new", thus there is no existing customer revenue for that year.
+
+
+**Revenue lost from attrition** (revenue lost from lost customers)
+```{r}
+# We are assuming no customers lost in 2015
+
+# lost customers in 2016 
+lost2016 <- anti_join(custs2015, custs2016, by="customer_email")
+
+# lost customers in 2017
+lost2017 <- anti_join(custs2016, custs2017, by="customer_email")
+
+# create new new data frame with lost customers only
+lost_custs <- bind_rows(lost2016, lost2017)
+
+Attrition_Rev_Lost <- lost_custs %>%
+  group_by(year) %>%
+  summarise(attrition_rev_lost = sum(net_revenue)) %>%
+  rename(prev_year = year) %>%
+  mutate(current_year = prev_year + 1)
+
+col_order <- c("prev_year", "current_year", "attrition_rev_lost")
+Attrition_Rev_Lost <- Attrition_Rev_Lost[, col_order]
+Attrition_Rev_Lost
+```
+
+
+**Existing Customer Revenue Current Year**
+```{r}
+Current_Existing_Rev <- existing_rev %>%
+  select(year, existing_rev)
+Current_Existing_Rev
+```
+
+**Existing Customer Revenue Prior Year**
+```{r}
+Prev_Existing_Rev <- existing_rev %>%
+  select(year, prev_existing_rev)
+Prev_Existing_Rev
+```
+
+**Total Customers Current Year**
+```{r}
+Total_Custs <- orders %>%
+  group_by(year) %>%
+  summarise(total_custs = n())
+Total_Custs
+```
+
+**Total Customers Previous Year**
+```{r}
+Prev_Total_Custs <- Total_Custs %>%
+  mutate(prev_total_custs = lag(total_custs)) %>%
+  select(year, prev_total_custs)
+Prev_Total_Custs
+```
+
+**New Customers** 
+```{r}
+New_Custs <- new_orders %>%
+  group_by(year) %>%
+  summarise(new_custs = n())
+New_Custs
+```
+
+**Lost Customers**
+```{r}
+Lost_Custs <- lost_custs %>%
+  mutate(current_year = year + 1) %>%
+  group_by(current_year) %>%
+  summarise(lost_custs = n())
+Lost_Custs
+```
+
 
 ## Visualizations
