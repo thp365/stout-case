@@ -102,13 +102,15 @@ Attrition_Rev_Lost <- lost_custs %>%
   group_by(year) %>%
   summarise(attrition_rev_lost = sum(net_revenue)) %>%
   rename(prev_year = year) %>%
-  mutate(current_year = prev_year + 1)
+  mutate(year = prev_year + 1) %>%
+  add_row(prev_year = 2014, year = 2015, attrition_rev_lost = 0) %>%
+  arrange(prev_year)
 
-col_order <- c("prev_year", "current_year", "attrition_rev_lost")
+col_order <- c("prev_year", "year", "attrition_rev_lost")
 Attrition_Rev_Lost <- Attrition_Rev_Lost[, col_order]
 Attrition_Rev_Lost
 ```
-
+Since we do not have data from 2014, we assume no customers were lost in 2015. 
 
 **Existing Customer Revenue Current Year**
 ```{r}
@@ -153,9 +155,92 @@ New_Custs
 Lost_Custs <- lost_custs %>%
   mutate(current_year = year + 1) %>%
   group_by(current_year) %>%
-  summarise(lost_custs = n())
+  summarise(lost_custs = n()) %>%
+  rename(year = current_year) %>%
+  add_row(year = 2015, lost_custs = 0) %>%
+  arrange(year)
+  
 Lost_Custs
 ```
 
 
-## Visualizations
+## Visualizations and Observations
+
+**Grouped Bar Chart Comparing Lost, New, and Existing Customer Count**
+```{r}
+# Data frame with existing, new, and lost customer count
+Existing_Custs <- Total_Custs %>%
+  full_join(New_Custs) %>%
+  mutate(existing_custs = total_custs - new_custs)
+#Existing_Custs
+
+custs_df <- Existing_Custs %>% full_join(Lost_Custs, by='year')
+custs_df
+```
+```{r}
+custs_df_long <- custs_df %>%
+  pivot_longer(cols = 3:5, 
+               names_to = "cust_type", 
+               values_to = "cust_count") 
+
+custs_df_long$cust_type <- factor(custs_df_long$cust_type, levels = c('lost_custs', 'new_custs', 'existing_custs'))
+
+custs_df_long$year <- factor(custs_df_long$year, levels = c('2017', '2016', '2015'))
+
+custs_df_long %>%
+  ggplot(aes(x=year, y=cust_count, fill=cust_type)) + 
+  geom_bar(stat="identity", position=position_dodge()) +
+  coord_flip() +
+  ggtitle("Lost, New, and Existing Customers per Year") +
+  labs(x="Year", y="Customer Count", fill="Customer Type") + 
+  scale_fill_discrete(labels=c("Lost Customers", "New Customers", "Existing Customers")) 
+```
+
+Observations: Although we only have data on three years and assume that all customers in 2015 are "new", we can observe that the number of existing, or returning, customers is far below the number of lost customers, thus customer retention is not well. We can also see that the number of lost and and new customers are both increasing in the latter two years. 
+
+
+**Line Graph of Total Revenue Over Time**
+
+```{r}
+Total_Rev %>%
+  ggplot((aes(x=year, y=total_rev))) +
+  geom_line(color="red") +
+  ggtitle("Total Revenue Over Time") +
+  labs(x="Year", y="Total Revenue") + 
+  scale_x_continuous(breaks = seq(2015, 2017, 1)) + 
+  ylim(0, 32500000)
+```
+
+Observations: The total revenue does not fluctuate drastically within the three recorded years, but we can notice a dip in revenue in 2016. 
+
+
+**Stacked Bar Chart of New and Existing Customer Revenue**
+```{r}
+# Data frame with total, existing, and new revenue
+rev_list <- list(Total_Rev, Current_Existing_Rev, New_Cust_Rev)
+
+rev_df <- rev_list %>% reduce(full_join, by = 'year')
+rev_df
+```
+
+```{r}
+rev_df_long <- rev_df %>%
+  pivot_longer(cols = 3:4, 
+               names_to = "rev_type", 
+               values_to = "rev_amount") 
+rev_df_long
+
+rev_df_long$rev_type <- factor(rev_df_long$rev_type, levels = c('new_cust_rev', 'existing_rev'))
+
+rev_df_long %>%
+  ggplot(aes(x=year, y=rev_amount, fill=rev_type)) + 
+  geom_bar(stat="identity", position="stack") +
+  ggtitle("Revenue from Existing and New Customers per Year") +
+  labs(x="Year", y="Revenue", fill="Revenue Type") + 
+  scale_fill_brewer(labels=c("New Customers", "Existing Customers"), palette = "Set2") + 
+  geom_text(aes(x=year, y=rev_amount, label=rev_amount, group=rev_type), 
+            position=position_stack(vjust = .5), colour="white")
+```
+
+Observations: The majority of total revenue is made up of new customers every year, and 2017 has the highest total revenue out of all three years.
+
